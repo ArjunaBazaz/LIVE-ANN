@@ -117,32 +117,147 @@
         <h2>Carnegie Mellon School of Computer Science</h2>
     </header>
 
-    <section>
+<section>
         <h2>Summary</h2>
+        <p>
+            We are going to build a real time streaming GPU accelerated parallel Inverted File (IVF) for vector search that handles real time inserts and deletes. We are going to optimize for high workload skew, with write heavy and delete heavy workloads.
+        </p>
     </section>
 
     <section>
         <h2>Background</h2>
+        <p>
+            Vector search is the process of finding the vector within a database that has the smallest distance to another input vector. This is usually done by calculating the L2 distance (euclidean distance) of the two vectors.
+            However, unlike 1-dimensional datasets, the high dimensional nature of the data makes binary search impossible. In addition, approach used for low dimensional data such as kD trees
+            do not work due to the high dimensions leading to much more overlap with blocks.
+        </p>
+        <p>
+            One solution to this is an inverted file (IVF). IVF used density based clusters to split the dataset into smaller sections.
+            An incoming vector first determines which cluster to visit, then searches through the cluster for the nearest neighbor.
+            This greatly speeds up nearest neighbor search. This is usually implemented by assigning each cluster a block of memory and loading it into shared memory for each streaming multiprocessor, with each SM handling queries to a specific cluster.
+            This makes inserts impractical in real time. Typically, systems batch inserts and updated them later, assuming that eventual consistency is okay.
+        </p>
+        <p>
+            Our project aims to add real time streaming of inserts, deletes, and centroid updates.
+        </p>
+        <p>
+            Parallelism is very valuable for systems like this since handling concurrent queries is essential for modern large systems. The vector search is very memory bound, so efficiently handling data loading and streaming is very important.
+            When adding in writes and deletes, handling parallel writes in also important for the same reason. Since the data often writes and deletes to the same cluster blocks, synchronyzation is also important.
+        <p>
+            Vector search is extremely useful for doing searches an filters on complex data. Complex data (such as language) is often encoded as vectors.
+            IVF is useful for determining things like, "what is the closest sentence in this book semantically to this other sentence."
+            A solution that can handle extreme skew is valuable for problems don't involve a premade corpus of vectors that are operated on consistently.
+        </p>
     </section>
 
     <section>
         <h2>The Challenge</h2>
+        <p>
+            This project is difficult to parallelize while still preventing heavy memory bandwidth throttling. It has a high memory across to computation ratio, which needs to be worked around is any solution.
+            A typical system will load an entire set of clusters into shared memory for caluclations. A incoming query will get assigned to a specific SM.
+            However, when inserts are streamed, it causes issues since the clusters are typically set in fixed blocks, and adding anything would lead to the recomputation of the block.
+            Our proposed solution is to create blocks or pages of memory that are loaded into shared memory and contain a fixed size portion of a cluster.
+            This introduces parallelism problems, though, as the threads need to ensure that they don't create new blocks for the same cluster even when that cluster is noncontiguous.
+            Writes also need to be coordinated with a write buffer. This buffer needs to prevent threads from grabbing the same write, will also ensures that they are fast.
+            To do this, the write buffer must be a lock free queue.
+        </p>
+        <p>
+            In addition, our database is meant to be optimized for high workload skew. This raises many new pararallelization problems. Firstly, high write workloads can cause contention for a single write buffer, requiring further workload partition.
+            Workload partition brings its own problems, such as workload imbalance that requires its own solutions.
+            High write concentration also means that threads contend for memory slabs for theirs writes.
+        </p>
+
+        <p>
+            Lastly, frequent writes and deletes mean that centroid will drift over time and need to be recomputed. This is difficult to parallelize since the recomputation process does not exhibit much locality and must be performed serially.
+            In addition, the process of reassigning vectors to centroids leads to read/write conflicts with other threads performing queries. This requires a new layer of synchronyzation during centroid reshuffling.
+        </p>
     </section>
 
     <section>
         <h2>Resources</h2>
+        <ul>
+            <li><strong>Code Base:</strong> Code base is built from scratch for the database. For generating clusters, we use the solution from facebook <a href=https://github.com/facebookresearch/faiss.git>FAISS</a>. </li>
+            <li><strong>Hardware:</strong> NVIDIA RTX 2080 Ti on GHC cluster for CPU and single GPU implementation, PSC machines or AWS for multi-GPU communication.</li>
+            <li><strong>Key References:</strong> <a href=arXiv:1702.08734>FAISS</a></li>
+        </ul>
     </section>
 
     <section>
         <h2>Goals and Deliverables</h2>
+        
+        <h3>Plan to Achieve</h3>
+        <ul>
+            <li>Create IVF that handles real time streaming while maintaining sequential consistency.</li>
+            <li>Achieve a speedup of 5x or more vs naive recomputation for inserts.</li>
+            <li>Acheived reduced memory overhead on high delete workloads compared to FAISS</li>
+            <li>Acheive improved performance compared to FAISS on workloads with less than 70% queries (30%+ writes/deletes)</li>
+        </ul>
+
+        <h3>Hope to Achieve</h3>
+        <ul>
+            <li>Supported centroid recalculation. Measured by improved accuracy of nearest neighbor compared to naive approach.</li>
+            <li>Improve performance on workloads with data size > 32 GB by handling mutli-GPU coordination.</li>
+        </ul>
+
+        <h3>Evaluation Plan</h3>
+        <p>
+            We plan to measure our performance based on benchmarks with variable data size, centroid count, workload skew, and operation skew.
+            We hope to answer the question of whether high workload skew degrades performance of existing approaches and whether a skew focused approach can improve this
+            while maintaining consistent performance on high query workloads.
+        </p>
     </section>
 
     <section>
         <h2>Platform Choice</h2>
+        <p>
+            Our project uses CUDA for GPU acceleration and coordination. For communication across GPUs, we plan to use MPI, although NCCL is an alternative that may be considered.
+        </p>
     </section>
 
     <section>
         <h2>Schedule</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Planned Tasks & Milestones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Week 1 (November 1st - November 7th)</strong></td>
+                    <td>Create plan, organized schedule. Create standard CPU IVF.</td>
+                </tr>
+                <tr>
+                    <td><strong>Week 2 (November 8th - November 14th)</strong></td>
+                    <td>Create GPU accelerated IVF and naive dynamic streaming IVF.</td>
+                </tr>
+                <tr>
+                    <td><strong>Week 3 (November 15th - November 21st)</strong></td>
+                    <td>Benchmark dynamic streaming IVF. Implement block based memory allocation scheme, lock free queue, and workload allocator.</td>
+                </tr>
+                <tr>
+                    <td><strong>Milestone (November 23rd)</strong></td>
+                    <td>Submit Milestone Report.</td>
+                </tr>
+                <tr>
+                    <td><strong>Week 4 (November 22nd - November 28th)</strong></td>
+                    <td>Test under extreme skew. Add delete compactor thread and write buffer for skew handling.</td>
+                </tr>
+                <tr>
+                    <td><strong>Week 5 (November 29th - December 5th)</strong></td>
+                    <td>Add multi-GPU support and further optimized delete compactor and write buffer.</td>
+                </tr>
+                <tr>
+                    <td><strong>Week 6 (December 6th - December 12th)</strong></td>
+                    <td>Collect final benchmarks, write paper, create presentation.</td>
+                </tr>
+                <tr>
+                    <td><strong>Final Project Due (December 10th)</strong></td>
+                    <td>Submit Final Project.</td>
+                </tr>
+            </tbody>
+        </table>
     </section>
 
 </div>

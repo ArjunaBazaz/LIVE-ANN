@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <vector>
+#include <shared_mutex>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,6 +34,31 @@ struct Points {
 struct Metadata {
     std::array<Point, centroid_count> centroids;
     std::array<std::pair<std::uint32_t, std::uint32_t>, centroid_count> segments;
+};
+
+// Structure for Centroid with coarsed grained locking
+struct Centroid_Coarse {
+    std::vector<Point> points;
+    std::vector<bool> tombstones;
+    std::vector<int> tombstone_indexes;
+    std::shared_mutex centroid_mutex;
+    int tombstone_count = 0;
+};
+
+struct Metadata_Coarse {
+    std::vector<std::pair<Point, Centroid_Coarse>> data;
+    explicit Metadata_Coarse(std::size_t count = centroid_count) : data(count) {}
+};
+
+enum class RequestType : std::uint8_t {
+    Query,
+    Insert,
+    Delete
+};
+
+struct Operation {
+    RequestType type;
+    Point point;
 };
 
 using Index = std::pair<std::unique_ptr<Points>, Metadata>;

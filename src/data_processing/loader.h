@@ -8,4 +8,8 @@ namespace sift {
 
 Index load_l2_index(const std::filesystem::path& packed_file);
 
+// Load the same packed file into independently mutable, mutex-protected clusters.
+// All loaded points start live, with empty tombstone free lists.
+std::unique_ptr<Metadata_Coarse> load_l2_coarse_index(const std::filesystem::path& packed_file);
+
 } // namespace sift

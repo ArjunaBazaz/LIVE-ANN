@@ -42,4 +42,34 @@ Index load_l2_index(const std::filesystem::path& packed_file) {
     return {std::move(points), std::move(metadata)};
 }
 
+std::unique_ptr<Metadata_Coarse> load_l2_coarse_index(const std::filesystem::path& packed_file) {
+    auto input = open_input(packed_file, packed_bytes);
+    Metadata packed_metadata;
+    input.seekg(static_cast<std::streamoff>(points_bytes));
+    read_exact(input, packed_metadata.centroids.data(), centroids_bytes);
+    std::size_t end = 0;
+    for (auto& segment : packed_metadata.segments) {
+        read_exact(input, &segment.first, sizeof(segment.first));
+        read_exact(input, &segment.second, sizeof(segment.second));
+        if (segment.first != end || segment.second > point_count - end) {
+            throw std::runtime_error("Invalid packed cluster segment.");
+        }
+        end += segment.second;
+    }
+    if (end != point_count) throw std::runtime_error("Packed segments do not cover all points.");
+
+    auto metadata = std::make_unique<Metadata_Coarse>(centroid_count);
+    input.seekg(0);
+    for (std::size_t c = 0; c < centroid_count; c++) {
+        auto& entry = metadata->data[c];
+        entry.first = packed_metadata.centroids[c];
+        auto& cluster = entry.second;
+        const auto length = packed_metadata.segments[c].second;
+        cluster.points.resize(length);
+        cluster.tombstones.assign(length, false);
+        if (length != 0) read_exact(input, cluster.points.data(), length * sizeof(Point));
+    }
+    return metadata;
+}
+
 } // namespace sift

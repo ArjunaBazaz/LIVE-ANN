@@ -26,22 +26,6 @@ void read_exact(std::istream& input, void* data, std::size_t bytes) {
     if (!input) throw std::runtime_error("Failed reading packed index/input.");
 }
 
-// Reads the clusters and stores them in the points, metadata format that the program uses.
-Index load_l2_index(const std::filesystem::path& packed_file) {
-    auto input = open_input(packed_file, packed_bytes);
-    Metadata metadata;
-    input.seekg(static_cast<std::streamoff>(points_bytes));
-    read_exact(input, metadata.centroids.data(), centroids_bytes);
-    for (auto& segment : metadata.segments) {
-        read_exact(input, &segment.first, sizeof(segment.first));
-        read_exact(input, &segment.second, sizeof(segment.second));
-    }
-    auto points = std::make_unique<Points>();
-    input.seekg(0);
-    read_exact(input, points->points.data(), points_bytes);
-    return {std::move(points), std::move(metadata)};
-}
-
 std::unique_ptr<Metadata_Coarse> load_l2_coarse_index(const std::filesystem::path& packed_file) {
     auto input = open_input(packed_file, packed_bytes);
     Metadata packed_metadata;
@@ -51,12 +35,8 @@ std::unique_ptr<Metadata_Coarse> load_l2_coarse_index(const std::filesystem::pat
     for (auto& segment : packed_metadata.segments) {
         read_exact(input, &segment.first, sizeof(segment.first));
         read_exact(input, &segment.second, sizeof(segment.second));
-        if (segment.first != end || segment.second > point_count - end) {
-            throw std::runtime_error("Invalid packed cluster segment.");
-        }
         end += segment.second;
     }
-    if (end != point_count) throw std::runtime_error("Packed segments do not cover all points.");
 
     auto metadata = std::make_unique<Metadata_Coarse>(centroid_count);
     input.seekg(0);

@@ -3,6 +3,9 @@
 #include "../data_processing/loader.h"
 #include "../ivf_static_cpu_base.h"
 #include "../ivf_dynamic_cpu_coarse_streaming.h"
+#ifdef LIVE_ANN_ENABLE_CUDA
+#include "../ivf_dynamic_gpu_coarse_streaming.h"
+#endif
 
 #include <charconv>
 #include <chrono>
@@ -15,17 +18,18 @@
 
 namespace benchmarking {
 namespace {
-using ProcessRequests = std::vector<Point> (*)(const std::vector<Point>&, const Points&, const Metadata&);
+using ProcessRequests = double (*)(const std::vector<Point>&, const Points&, const Metadata&);
 
 // Handles the selection of what implementation to use.
 // Options:
 //  cpu_static_base - static IVF on multicore CPU using point based parallelism.
+//  cpu
 ProcessRequests select_implementation(const std::string& implementation) {
     if (implementation == "cpu_static_base") {
         return ivf_static_cpu_base::process_requests;
     }
     throw std::invalid_argument("Unknown implementation: " + implementation +
-        ". Supported: cpu_static_base, cpu_dynamic_coarse_streaming");
+        ". Supported: cpu_static_base, cpu_dynamic_coarse_streaming, gpu_dynamic_coarse_streaming");
 }
 
 // Reads the header rows from the query file and loads the individual file
@@ -71,9 +75,6 @@ std::vector<Point> read_queries(const std::string& filename) {
     std::vector<Point> queries;
     std::string line;
     for (std::size_t i = 0; i < count; i++) {
-        if (!std::getline(input, line)) {
-            throw std::runtime_error("Missing query " + std::to_string(i + 1));
-        }
         std::istringstream row(line);
         Point query;
         for (float& value : query) {
@@ -111,21 +112,29 @@ std::vector<Operation> read_workload(const std::string& filename) {
             }
         }
         std::string extra;
-        if (row >> extra) {
-            throw std::runtime_error("Too many coordinates on workload line " + std::to_string(line_number));
-        }
         requests.push_back(request);
     }
-    if (input.bad()) throw std::runtime_error("Failed reading workload file.");
-    if (requests.empty()) throw std::runtime_error("Workload file contains no operations.");
     return requests;
 }
 
 // Runs the benchmark, reports the completion time and the throughput in terms of queries / second
 BenchmarkResult run_benchmark(const std::string& filename, const std::string& implementation) {
-    if (implementation == "cpu_dynamic_coarse_streaming") {
+#ifndef LIVE_ANN_ENABLE_CUDA
+    if (implementation == "gpu_dynamic_coarse_streaming") {
+        throw std::invalid_argument(
+            "GPU support is not enabled in this build. Rebuild with -DLIVE_ANN_ENABLE_CUDA "
+            "and link the CUDA implementation and runtime.");
+    }
+#endif
+    if (implementation == "cpu_dynamic_coarse_streaming" || implementation == "gpu_dynamic_coarse_streaming") {
         const auto requests = read_workload(filename);
         auto metadata = sift::load_l2_coarse_index("sift/sift_l2.packed.bin");
+#ifdef LIVE_ANN_ENABLE_CUDA
+        std::unique_ptr<Metadata_GPU> gpu_metadata;
+        if (implementation == "gpu_dynamic_coarse_streaming") {
+            gpu_metadata = std::make_unique<Metadata_GPU>(*metadata);
+        }
+#endif
         std::cout << "SIFT clusters loaded.\n";
         std::cout << "Test file loaded: " << filename << '\n';
 
@@ -140,13 +149,16 @@ BenchmarkResult run_benchmark(const std::string& filename, const std::string& im
         }
         std::cout << "Starting benchmark." << std::endl;
         const auto start = std::chrono::steady_clock::now();
-        const auto results = ivf_dynamic_cpu_coarse_streaming::process_requests(requests, *metadata);
+        const double total_squared_distance =
+#ifdef LIVE_ANN_ENABLE_CUDA
+            gpu_metadata
+            ? ivf_dynamic_gpu_coarse_streaming::process_requests(requests, *gpu_metadata)
+            :
+#endif
+            ivf_dynamic_cpu_coarse_streaming::process_requests(requests, *metadata);
         const auto finish = std::chrono::steady_clock::now();
         result.seconds = std::chrono::duration<double>(finish - start).count();
-        for (std::size_t i = 0; i < requests.size(); ++i) {
-            if (requests[i].type != RequestType::Query) continue;
-            for (float coordinate : results[i]) result.result_checksum += coordinate;
-        }
+        result.total_squared_distance = total_squared_distance;
         if (result.seconds > 0) {
             result.queries_per_second = static_cast<double>(result.query_count) / result.seconds;
             result.operations_per_second = static_cast<double>(result.operation_count) / result.seconds;
@@ -161,16 +173,12 @@ BenchmarkResult run_benchmark(const std::string& filename, const std::string& im
 
     std::cout << "Starting benchmark." << std::endl;
     const auto start = std::chrono::steady_clock::now();
-    const auto results = process_requests(queries, *points, metadata);
+    const double total_squared_distance = process_requests(queries, *points, metadata);
     const auto finish = std::chrono::steady_clock::now();
 
     const double seconds = std::chrono::duration<double>(finish - start).count();
-    double checksum = 0;
-    for (const auto& result : results) {
-        for (float coordinate : result) checksum += coordinate;
-    }
     const double throughput = seconds > 0 ? static_cast<double>(queries.size()) / seconds : 0;
-    BenchmarkResult result{queries.size(), seconds, throughput, checksum};
+    BenchmarkResult result{queries.size(), seconds, throughput, total_squared_distance};
     result.operation_count = queries.size();
     result.operations_per_second = throughput;
     return result;

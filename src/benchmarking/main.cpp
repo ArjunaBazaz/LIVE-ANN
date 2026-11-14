@@ -7,7 +7,7 @@
 
 namespace {
 void usage() {
-    std::cout << "Usage: benchmark --filename <file.txt> --implementation <cpu_static_base|cpu_dynamic_coarse_streaming>\n"
+    std::cout << "Usage: benchmark --filename <file.txt> --implementation <cpu_static_base|cpu_dynamic_coarse_streaming|gpu_dynamic_coarse_streaming>\n"
         "Run from the repository root. Reads testing_files/<file.txt>.\n"
         "Static: numeric count/dimension headers and query rows. Dynamic: labeled operation rows without headers.\n";
 }
@@ -38,7 +38,8 @@ int main(int argc, char* argv[]) {
             throw std::invalid_argument("--filename and --implementation are required.");
         }
         const auto result = benchmarking::run_benchmark(filename, implementation);
-        const bool mixed = implementation == "cpu_dynamic_coarse_streaming";
+        const bool mixed = implementation == "cpu_dynamic_coarse_streaming" ||
+                           implementation == "gpu_dynamic_coarse_streaming";
         std::cout << "Implementation: " << implementation << '\n';
         if (mixed) std::cout << "Operations: " << result.operation_count << '\n';
         std::cout << "Queries: " << result.query_count << '\n';
@@ -50,7 +51,7 @@ int main(int argc, char* argv[]) {
                   << "Total time: " << result.seconds << " seconds\n"
                   << "Throughput: " << result.operations_per_second
                   << (mixed ? " operations/second\n" : " queries/second\n")
-                  << "Result checksum: " << result.result_checksum << '\n';
+                  << "Total sum squared distance: " << result.total_squared_distance << '\n';
 
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';

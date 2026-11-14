@@ -6,9 +6,9 @@
 
 namespace ivf_dynamic_cpu_coarse_streaming {
 
-// Holds the centroid-table shared lock, then one cluster shared lock at a time.
-// Throws if no live point exists in the selected clusters.
-Point search(const Point& query, Metadata_Coarse& metadata);
+// Returns the nearest squared distance, holding one cluster shared lock at a time.
+// Returns infinity if no live point exists in the selected clusters.
+double search(const Point& query, Metadata_Coarse& metadata);
 
 void insert(const Point& query, Metadata_Coarse& metadata);
 
@@ -16,6 +16,7 @@ void insert(const Point& query, Metadata_Coarse& metadata);
 // Does nothing when point is not present
 void erase(const Point& query, Metadata_Coarse& metadata);
 
-std::vector<Point> process_requests(const std::vector<Operation>& requests, Metadata_Coarse& metadata);
+// Returns the sum of nearest squared distances for search operations only.
+double process_requests(const std::vector<Operation>& requests, Metadata_Coarse& metadata);
 
 } // namespace ivf_dynamic_cpu_coarse_streaming

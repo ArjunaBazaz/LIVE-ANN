@@ -12,7 +12,7 @@ struct BenchmarkResult {
     std::size_t query_count;
     double seconds;
     double queries_per_second;
-    double result_checksum;
+    double total_squared_distance;
     std::size_t operation_count = 0;
     std::size_t insert_count = 0;
     std::size_t delete_count = 0;
@@ -26,7 +26,7 @@ std::vector<Point> read_queries(const std::string& filename);
 std::vector<Operation> read_workload(const std::string& filename);
 
 // File parsing and index loading occur before timing. Only process_requests is
-// timed; the returned points are consumed after timing to retain the computation.
+// timed, including summing the nearest squared distances for all queries.
 BenchmarkResult run_benchmark(const std::string& filename, const std::string& implementation);
 
 } // namespace benchmarking

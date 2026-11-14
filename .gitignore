@@ -1,4 +1,7 @@
 .env
 sift/*
-Centroid_Generation/*
+centroid_generation/*
 testing_files/*
+unused/*
+src/ivf_dynamic_gpu_coarse_streaming.cu
+src/ivf_dynamic_gpu_coarse_streaming.h

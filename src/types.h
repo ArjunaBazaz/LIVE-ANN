@@ -18,7 +18,7 @@ inline constexpr std::size_t point_count = 1000000;
 inline constexpr std::size_t centroid_count = 256;
 
 // The number of clusters to examine for the closest point
-inline constexpr std::size_t k_count = 8;
+inline constexpr std::size_t k_count = 4;
 
 // Datatype for the vector points
 using Point = std::array<float, dimension>;
@@ -59,6 +59,27 @@ enum class RequestType : std::uint8_t {
 struct Operation {
     RequestType type;
     Point point;
+};
+
+// Owns a persistent device index. Construct/upload before starting a benchmark.
+// heap_bytes is a minimum device-heap budget; 0 selects 75% of currently free
+// device memory. Configure the largest needed budget before the first index.
+// CUDA's device heap cannot grow after kernels using it have been loaded.
+class Metadata_GPU {
+public:
+    explicit Metadata_GPU(const Metadata_Coarse& source, std::size_t heap_bytes = 0);
+    ~Metadata_GPU();
+    Metadata_GPU(Metadata_GPU&&) noexcept;
+    Metadata_GPU& operator=(Metadata_GPU&&) noexcept;
+    Metadata_GPU(const Metadata_GPU&) = delete;
+    Metadata_GPU& operator=(const Metadata_GPU&) = delete;
+
+    std::size_t heap_bytes() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+    friend double process_requests(const std::vector<Operation>&, Metadata_GPU&);
 };
 
 using Index = std::pair<std::unique_ptr<Points>, Metadata>;

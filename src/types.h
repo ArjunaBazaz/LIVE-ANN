@@ -45,41 +45,23 @@ struct Centroid_Coarse {
     int tombstone_count = 0;
 };
 
+// Metadata for dynamic IVF
 struct Metadata_Coarse {
     std::vector<std::pair<Point, Centroid_Coarse>> data;
     explicit Metadata_Coarse(std::size_t count = centroid_count) : data(count) {}
 };
 
+// Represents query types
 enum class RequestType : std::uint8_t {
     Query,
     Insert,
     Delete
 };
 
+// Data structure for operation, containing the operation type and the point itself.
 struct Operation {
     RequestType type;
     Point point;
-};
-
-// Owns a persistent device index. Construct/upload before starting a benchmark.
-// heap_bytes is a minimum device-heap budget; 0 selects 75% of currently free
-// device memory. Configure the largest needed budget before the first index.
-// CUDA's device heap cannot grow after kernels using it have been loaded.
-class Metadata_GPU {
-public:
-    explicit Metadata_GPU(const Metadata_Coarse& source, std::size_t heap_bytes = 0);
-    ~Metadata_GPU();
-    Metadata_GPU(Metadata_GPU&&) noexcept;
-    Metadata_GPU& operator=(Metadata_GPU&&) noexcept;
-    Metadata_GPU(const Metadata_GPU&) = delete;
-    Metadata_GPU& operator=(const Metadata_GPU&) = delete;
-
-    std::size_t heap_bytes() const;
-
-private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
-    friend double process_requests(const std::vector<Operation>&, Metadata_GPU&);
 };
 
 using Index = std::pair<std::unique_ptr<Points>, Metadata>;

@@ -19,9 +19,6 @@ struct BenchmarkResult {
     double operations_per_second = 0;
 };
 
-// Reads testing_files/<filename>. Header lines: query count, then dimension.
-std::vector<Point> read_queries(const std::string& filename);
-
 // Reads headerless rows: search|insert|delete followed by dimension floats.
 std::vector<Operation> read_workload(const std::string& filename);
 
